@@ -1,0 +1,6 @@
+# Video processing pipeline for Meet interview (scene detection, blur-fill, smoothing)
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+scenedetect[opencv]>=0.6.0
+vidstab[cv2]>=1.7.0
+tqdm>=4.65.0
