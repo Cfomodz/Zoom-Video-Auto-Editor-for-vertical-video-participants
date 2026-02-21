@@ -1,6 +1,17 @@
+<div align="center">
+  
 # Video processing for conference recordings
+![GitHub License](https://img.shields.io/github/license/Cfomodz/Zoom-Video-Auto-Editor-for-vertical-video-participants)
+![GitHub Sponsors](https://img.shields.io/github/sponsors/Cfomodz)
+![Discord](https://img.shields.io/discord/425182625032962049)
 
-Process a recorded Zoom, Google Meet, or similar call where:
+<img src="https://github.com/user-attachments/assets/2369c7b0-c391-4a7c-92d3-1029499760c2" alt="video conference" width="400"/>
+
+</div>
+
+---
+
+**Process a recorded Zoom, Google Meet, or similar call where:**
 
 - **Some participants** have horizontal, stationary footage (e.g. webcam) — left unchanged.
 - **Others** have vertical and/or unsteady footage (e.g. phone) — crop pillarboxing, smooth shake, and place in a 1920×1080 frame with a blurred background fill.
