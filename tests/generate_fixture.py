@@ -8,7 +8,6 @@ The image has:
 Run this script directly to (re)generate the fixture:
     python tests/generate_fixture.py
 """
-import sys
 from pathlib import Path
 
 import cv2

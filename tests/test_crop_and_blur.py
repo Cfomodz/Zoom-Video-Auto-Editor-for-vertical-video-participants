@@ -15,8 +15,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pytest
-
 # Ensure the project root is importable
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -197,16 +195,25 @@ class TestBlurFill:
             f"in blur-filled output"
         )
 
-    def test_center_brighter_than_edges(self):
-        """The center (sharp content) should generally be brighter than the blurred edges."""
+    def test_edges_are_blurred(self):
+        """The edge regions (blur background) should have lower high-frequency energy
+        than the center region (sharp content), verified via Laplacian variance."""
         frame = _load(PILLARBOXED_IMG)
         x_left, x_right = pillarbox_content_bounds(frame)
         cropped = frame[:, x_left:x_right, :]
         filled = blur_fill_cropped_frame(cropped)
-        col_means = column_means(filled)
-        center_mean = col_means[OUTPUT_WIDTH // 4 : 3 * OUTPUT_WIDTH // 4].mean()
-        edge_mean = (col_means[:100].mean() + col_means[-100:].mean()) / 2
-        assert center_mean > edge_mean, "Center should be brighter than blurred edges"
+        gray = cv2.cvtColor(filled, cv2.COLOR_BGR2GRAY)
+        lap = cv2.Laplacian(gray, cv2.CV_64F)
+
+        center_var = lap[:, OUTPUT_WIDTH // 4 : 3 * OUTPUT_WIDTH // 4].var()
+        left_edge_var = lap[:, :100].var()
+        right_edge_var = lap[:, -100:].var()
+        edge_var = (left_edge_var + right_edge_var) / 2
+
+        assert center_var > edge_var, (
+            f"Center Laplacian variance ({center_var:.2f}) should exceed "
+            f"edge variance ({edge_var:.2f}); edges should be blurred"
+        )
 
     def test_blur_fill_frame_direct(self):
         """blur_fill_frame (takes raw pillarboxed frame) should also produce valid output."""
