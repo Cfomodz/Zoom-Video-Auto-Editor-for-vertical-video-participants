@@ -150,15 +150,22 @@ def pillarbox_content_bounds(frame: np.ndarray, black_threshold: int = BLACK_THR
     h, w = frame.shape[:2]
     min_bar = int(w * PILLAR_MIN_WIDTH_RATIO)
     min_content_width = int(w * PILLAR_MIN_CONTENT_RATIO)
-    # Left edge: count consecutive black (windowed) columns
+    # Left edge: scan from left until we hit a non-black column (windowed)
     left = 0
-    while left < w and left < min_bar and is_black_column(frame, left, black_threshold):
+    while left < w and is_black_column(frame, left, black_threshold):
+        left += 1
+    # Refine: the windowed check may stop a few columns early; skip any
+    # remaining individually-black columns at the boundary.
+    while left < w and np.mean(frame[:, left, :]) < black_threshold:
         left += 1
     if left < min_bar:
         left = 0
-    # Right edge: scan from right until we hit a non-black column (right edge of content)
+    # Right edge: scan from right until we hit a non-black column (windowed)
     right = w - 1
     while right >= 0 and is_black_column(frame, right, black_threshold):
+        right -= 1
+    # Refine: skip any individually-black columns the window averaged past.
+    while right >= 0 and np.mean(frame[:, right, :]) < black_threshold:
         right -= 1
     if right < 0:
         return None
