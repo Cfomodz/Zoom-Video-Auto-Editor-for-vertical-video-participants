@@ -1,5 +1,13 @@
 # Debug findings & fix plan
 
+> **Status: implemented.** All four steps below are done, plus the audio-mux
+> follow-up (see `audio_mux.py`). One additional root cause surfaced during
+> implementation: scenedetect 0.7 hard-depends on the GUI `opencv-python`
+> wheel, dragging OpenCV 5 back into a clean install next to the pinned 4.x —
+> fixed by pinning `scenedetect>=0.6,<0.7`. Verified: 31 tests pass from a
+> fresh `pip install -r requirements.txt`, and the CLI runs end-to-end with
+> stabilization and audio in both output modes.
+
 ## Symptom
 
 Running the pipeline on any video with pillarboxed segments crashes on the first
@@ -122,9 +130,12 @@ in `classified` (copy original frames through) instead of `continue`-ing.
   are blur-filled edge-to-edge (no black columns).
 - Existing 24-test suite passes on OpenCV 4.13.
 
-## Known limitation (out of scope, worth noting)
+## Follow-up: audio mux (implemented)
 
-Output is video-only: OpenCV's `VideoWriter` cannot carry audio, so the
-processed file is silent and uses the dated mp4v codec. If audio matters for
-Zoom recordings, a follow-up could mux the original audio track back (and
-re-encode to H.264) with ffmpeg after Step 3 of the pipeline.
+OpenCV's `VideoWriter` cannot carry audio, so the pipeline originally produced
+silent mp4v files. `audio_mux.py` now runs as Step 4 when ffmpeg is on PATH:
+the original audio is muxed back in (full track for `--full-timeline`;
+per-segment `atrim`+`concat` for concat mode so audio stays in sync) and the
+video is re-encoded to H.264/AAC. Falls back to the silent video-only file —
+with a printed notice — when ffmpeg is missing, the input has no audio stream,
+or the mux fails. Opt out with `--no-audio`.

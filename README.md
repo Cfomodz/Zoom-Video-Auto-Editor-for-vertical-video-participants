@@ -21,8 +21,8 @@ The pipeline detects scene cuts, classifies each segment as pillarboxed (vertica
 ## Requirements
 
 - Python 3.10+
-- FFmpeg on `PATH` (for PySceneDetect)
-- OpenCV (installed via `requirements.txt`)
+- FFmpeg on `PATH` (used to mux the original audio into the output and encode it as H.264; without it the output is video-only mp4v)
+- OpenCV 4.x (installed via `requirements.txt` — OpenCV 5 is not compatible with the stabilizer's dependencies, so keep the pins as-is)
 
 ## Install
 
@@ -50,6 +50,9 @@ python -m venv .venv
 # Skip stabilization (faster)
 .venv/bin/python pipeline.py --input /path/to/recording.mp4 --output /path/to/out.mp4 --skip-stabilize
 
+# Skip the audio mux step (output is video-only mp4v, no ffmpeg needed)
+.venv/bin/python pipeline.py --input /path/to/recording.mp4 --output /path/to/out.mp4 --no-audio
+
 # Force full recompute (ignore cached segments and scene cache)
 .venv/bin/python pipeline.py --input /path/to/recording.mp4 --no-resume
 ```
@@ -72,8 +75,10 @@ If you omit `--input` / `--output`, paths from `config.py` are used.
 
 ## Output
 
-- **Default** (no `--full-timeline`): one video containing only the processed (pillarboxed) segments, in order.
-- **With `--full-timeline`**: one video with the same duration as the input; full-width segments are copied from the original, pillarboxed segments are replaced by the processed versions.
+- **Default** (no `--full-timeline`): one video containing only the processed (pillarboxed) segments, in order. Audio for those segments is trimmed from the original and kept in sync.
+- **With `--full-timeline`**: one video with the same duration as the input; full-width segments are copied from the original, pillarboxed segments are replaced by the processed versions. The full original audio track is carried over.
+
+When FFmpeg is on `PATH` (and `--no-audio` isn't set), the final file is H.264 + AAC with the original audio. Otherwise the pipeline falls back to a silent mp4v file and says so.
 
 Processed segments are written under `output/` (temp crops, stabilized clips, and final blur-filled clips). The pipeline is resumable: re-run the same command to reuse existing temp files and only recompute what’s missing.
 
