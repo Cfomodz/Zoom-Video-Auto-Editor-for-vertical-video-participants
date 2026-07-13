@@ -1,6 +1,10 @@
 # Video processing pipeline for Meet interview (scene detection, blur-fill, smoothing)
-opencv-python-headless>=4.8.0
+# OpenCV must stay on 4.x: OpenCV 5 moved BRISK out of the main module, which
+# breaks imutils (a vidstab dependency) at import time. Use exactly one cv2
+# distribution — the vidstab[cv2] extra and scenedetect>=0.7 (which hard-depends
+# on the GUI opencv-python wheel) would each pull in a second, conflicting one.
+opencv-contrib-python-headless>=4.8.0,<5
 numpy>=1.24.0
-scenedetect[opencv]>=0.6.0
-vidstab[cv2]>=1.7.0
+scenedetect>=0.6.0,<0.7
+vidstab>=1.7.0
 tqdm>=4.65.0
