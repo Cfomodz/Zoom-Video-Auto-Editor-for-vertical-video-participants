@@ -20,6 +20,14 @@ Scene detection and classification are cached per video. Cache key = hash of (pa
 
 Each pillarboxed segment is written to disk as it’s processed: `output/temp/seg_N_crop.mp4`, `seg_N_crop_stable.mp4`, `seg_N_blur.mp4`. If the run crashes, re-run the same command; existing temp files are reused and only missing segments are recomputed. Use `--no-resume` to force recomputing all segments (and optionally clear `output/temp/` first).
 
+## Audio
+
+OpenCV writes video only, so the assembled result first lands in `output/temp/{output_stem}_video_only.mp4`; when ffmpeg is on PATH, `audio_mux.py` muxes the original audio in (full track in `--full-timeline` mode, per-segment trims in concat mode) and re-encodes to H.264/AAC at the final output path. If ffmpeg is missing, the input is silent, or the mux fails, the video-only file is moved to the output path instead. `--no-audio` skips the mux entirely.
+
+## Dependency pins (do not loosen)
+
+OpenCV must stay `<5`: OpenCV 5 removed `cv2.BRISK_create` from the main module, which breaks `imutils` (a vidstab dependency) at import time. scenedetect must stay `<0.7`: 0.7 hard-depends on the GUI `opencv-python` wheel, installing a second conflicting `cv2` next to the pinned headless one. Exactly one OpenCV distribution (`opencv-contrib-python-headless`) should be installed; `tests/test_pipeline_e2e.py` has a stabilize smoke test that catches these breakages.
+
 ## Config paths
 
 - `INPUT_VIDEO` / `OUTPUT_VIDEO` in `config.py` are defaults; `pipeline.py` accepts `--input` and `--output` to override. If the default input path doesn’t exist, the pipeline exits with an error until the user provides a valid path.

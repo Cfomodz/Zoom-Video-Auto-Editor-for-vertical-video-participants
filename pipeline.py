@@ -5,6 +5,7 @@ pillarboxed segments (crop → stabilize → blur-fill), output full timeline or
 pillarboxed-only concat. Temp files are written per segment for resumability.
 """
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from scene_utils import (
 from crop import get_segment_content_bounds, crop_segment
 from blur_fill import blur_fill_segment_from_cropped
 from stabilize import stabilize_video
+from audio_mux import mux_audio
 
 
 def extract_fps_and_frame_count(video_path: Path):
@@ -101,6 +103,7 @@ def run_pipeline(
     skip_stabilize: bool = False,
     full_timeline: bool = False,
     resume: bool = True,
+    with_audio: bool = True,
 ):
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     temp_dir = OUTPUT_DIR / "temp"
@@ -116,7 +119,9 @@ def run_pipeline(
         save_scenes_cache(input_path, classified)
     else:
         print("Step 1 & 2: Using cached scene list (same video).")
-    pillarboxed_segments = [(s, e) for s, e, label in classified if label == "pillarboxed"]
+    pillarboxed_segments = [
+        (i, s, e) for i, (s, e, label) in enumerate(classified) if label == "pillarboxed"
+    ]
     print(f"  Pillarboxed segments: {len(pillarboxed_segments)}")
 
     if not pillarboxed_segments:
@@ -130,20 +135,25 @@ def run_pipeline(
     cap0.release()
 
     processed_paths = []
-    for idx, (start_frame, end_frame) in enumerate(pillarboxed_segments):
+    processed_segments = []  # (start_frame, end_frame) matching processed_paths, for audio mux
+    for idx, (ci, start_frame, end_frame) in enumerate(pillarboxed_segments):
         crop_path = temp_dir / f"seg_{idx}_crop.mp4"
         stable_crop_path = temp_dir / f"seg_{idx}_crop_stable.mp4"
         blur_path = temp_dir / f"seg_{idx}_blur.mp4"
         if resume and blur_path.exists():
             print(f"  Reusing segment {idx + 1}/{len(pillarboxed_segments)} (frames {start_frame}-{end_frame})…")
             processed_paths.append(blur_path)
+            processed_segments.append((start_frame, end_frame))
             continue
         print(f"  Processing segment {idx + 1}/{len(pillarboxed_segments)} (frames {start_frame}-{end_frame})…")
         # Step A: crop to vertical content only (no black bars)
         if not (resume and crop_path.exists()):
             bounds = get_segment_content_bounds(input_path, start_frame, end_frame)
             if bounds is None:
-                print(f"    Warning: no pillarbox bounds for segment {idx}, skipping.")
+                # Relabel so write_full_timeline copies the original frames instead
+                # of consuming a processed path that was never produced.
+                print(f"    Warning: no stable pillarbox bounds for segment {idx}; treating as full_width.")
+                classified[ci] = (start_frame, end_frame, "full_width")
                 continue
             crop_segment(input_path, start_frame, end_frame, crop_path, bounds, fps)
         # Step B: stabilize the cropped (raw) video so motion reduction sees the real shake
@@ -156,13 +166,27 @@ def run_pipeline(
         if not (resume and blur_path.exists()):
             blur_fill_segment_from_cropped(source_for_blur, blur_path, fps, progress_callback=None)
         processed_paths.append(blur_path)
+        processed_segments.append((start_frame, end_frame))
 
+    if not processed_paths:
+        print("No segments could be processed. Check PILLAR_* and BLACK_THRESHOLD in config.")
+        return 1
+
+    # OpenCV writes video only; when muxing audio, write to a temp file first.
+    video_only_path = temp_dir / f"{output_path.stem}_video_only.mp4" if with_audio else output_path
     if full_timeline:
         print("Step 3: Writing full timeline…")
-        write_full_timeline(input_path, classified, processed_paths, output_path, fps, w, h)
+        write_full_timeline(input_path, classified, processed_paths, video_only_path, fps, w, h)
     else:
         print("Step 3: Concatenating processed segments…")
-        concat_videos(processed_paths, output_path, fps)
+        concat_videos(processed_paths, video_only_path, fps)
+
+    if with_audio:
+        print("Step 4: Muxing original audio (ffmpeg)…")
+        if mux_audio(video_only_path, input_path, output_path, full_timeline, processed_segments, fps):
+            video_only_path.unlink()
+        else:
+            shutil.move(str(video_only_path), str(output_path))
     print(f"  Written: {output_path}")
     return 0
 
@@ -184,6 +208,11 @@ def main():
         action="store_true",
         help="Recompute all segments; do not reuse existing temp files.",
     )
+    p.add_argument(
+        "--no-audio",
+        action="store_true",
+        help="Skip the ffmpeg audio mux step; output is video-only (mp4v).",
+    )
     args = p.parse_args()
     if not args.input.exists():
         print(f"Input not found: {args.input}", file=sys.stderr)
@@ -194,6 +223,7 @@ def main():
         skip_stabilize=args.skip_stabilize,
         full_timeline=args.full_timeline,
         resume=not args.no_resume,
+        with_audio=not args.no_audio,
     )
 
 
