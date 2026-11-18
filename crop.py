@@ -7,6 +7,7 @@ from pathlib import Path
 
 from config import BLACK_THRESHOLD
 from scene_utils import pillarbox_content_bounds
+from video_io import VideoWriter
 
 
 def get_segment_content_bounds(
@@ -63,8 +64,7 @@ def crop_segment(
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     crop_w = x_right - x_left
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (crop_w, h))
+    out = VideoWriter(output_path, fps, (crop_w, h))
     total = end_frame - start_frame
     for _ in range(total):
         ret, frame = cap.read()

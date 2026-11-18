@@ -18,6 +18,7 @@ from config import (
     PILLAR_MIN_WIDTH_RATIO,
 )
 from scene_utils import pillarbox_content_bounds
+from video_io import VideoWriter
 
 
 def blur_fill_cropped_frame(frame: np.ndarray) -> np.ndarray:
@@ -86,8 +87,7 @@ def blur_fill_segment(
     """
     cap = cv2.VideoCapture(str(video_path))
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    out = VideoWriter(output_path, fps, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
     total = end_frame - start_frame
     for i in range(total):
         ret, frame = cap.read()
@@ -112,8 +112,7 @@ def blur_fill_segment_from_cropped(
     apply blur_fill_cropped_frame to place it in 1920x1080 with blurred background.
     """
     cap = cv2.VideoCapture(str(cropped_video_path))
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    out = VideoWriter(output_path, fps, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     for i in range(total):
         ret, frame = cap.read()

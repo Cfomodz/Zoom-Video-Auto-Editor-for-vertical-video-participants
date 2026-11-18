@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from config import INPUT_VIDEO, OUTPUT_DIR, OUTPUT_VIDEO  # INPUT_VIDEO can be overridden by --input
 from scene_utils import (
@@ -17,11 +18,14 @@ from scene_utils import (
     classify_scenes,
     load_scenes_cache,
     save_scenes_cache,
+    video_cache_key,
 )
 from crop import get_segment_content_bounds, crop_segment
 from blur_fill import blur_fill_segment_from_cropped
 from stabilize import stabilize_video
 from audio_mux import mux_audio
+from media import ensure_cfr
+from video_io import VideoWriter
 
 
 def extract_fps_and_frame_count(video_path: Path):
@@ -32,23 +36,57 @@ def extract_fps_and_frame_count(video_path: Path):
     return fps, count
 
 
-def concat_videos(segment_paths: list[Path], output_path: Path, fps: float):
-    """Concatenate segment video files into one output (same resolution/codec). Streams frame-by-frame; no full load in memory."""
+def write_exact_frames(out, cap, n_frames: int, w: int, h: int) -> int:
+    """
+    Copy exactly n_frames from cap to out (resized to w x h if needed). If the
+    source runs short (decoders sometimes return a frame or two fewer than the
+    container claims), repeat the last frame so the output timeline — and the
+    audio cut to match it — never slips. Returns how many frames were padded.
+    """
+    last = None
+    for i in range(n_frames):
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            if last is None:
+                last = np.zeros((h, w, 3), dtype=np.uint8)
+            for _ in range(n_frames - i):
+                out.write(last)
+            return n_frames - i
+        if frame.shape[1] != w or frame.shape[0] != h:
+            frame = cv2.resize(frame, (w, h))
+        out.write(frame)
+        last = frame
+    return 0
+
+
+def concat_videos(
+    segment_paths: list[Path],
+    output_path: Path,
+    fps: float,
+    frame_counts: list[int] | None = None,
+):
+    """
+    Concatenate segment video files into one output (same resolution/codec).
+    Streams frame-by-frame; no full load in memory. With frame_counts, each
+    segment contributes exactly that many frames (see write_exact_frames).
+    """
     if not segment_paths:
         return
     cap0 = cv2.VideoCapture(str(segment_paths[0]))
     w = int(cap0.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap0.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap0.release()
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (w, h))
-    for seg_path in segment_paths:
+    out = VideoWriter(output_path, fps, (w, h), final=True)
+    for i, seg_path in enumerate(segment_paths):
         cap = cv2.VideoCapture(str(seg_path))
-        while True:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                break
-            out.write(frame)
+        if frame_counts is not None:
+            write_exact_frames(out, cap, frame_counts[i], w, h)
+        else:
+            while True:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    break
+                out.write(frame)
         cap.release()
     out.release()
 
@@ -65,33 +103,19 @@ def write_full_timeline(
     """
     Full timeline: full_width segments from original, pillarboxed segments from processed temp files.
     """
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (w, h))
+    out = VideoWriter(output_path, fps, (w, h), final=True)
     cap_input = cv2.VideoCapture(str(input_path))
     pillarboxed_idx = 0
     for start_frame, end_frame, label in classified:
         n_frames = end_frame - start_frame
         if label == "full_width":
             cap_input.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            for _ in range(n_frames):
-                ret, frame = cap_input.read()
-                if not ret or frame is None:
-                    break
-                # Ensure size in case of any mismatch
-                if frame.shape[1] != w or frame.shape[0] != h:
-                    frame = cv2.resize(frame, (w, h))
-                out.write(frame)
+            write_exact_frames(out, cap_input, n_frames, w, h)
         else:
             seg_path = processed_paths[pillarboxed_idx]
             pillarboxed_idx += 1
             cap_seg = cv2.VideoCapture(str(seg_path))
-            for _ in range(n_frames):
-                ret, frame = cap_seg.read()
-                if not ret or frame is None:
-                    break
-                if frame.shape[1] != w or frame.shape[0] != h:
-                    frame = cv2.resize(frame, (w, h))
-                out.write(frame)
+            write_exact_frames(out, cap_seg, n_frames, w, h)
             cap_seg.release()
     cap_input.release()
     out.release()
@@ -108,6 +132,9 @@ def run_pipeline(
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     temp_dir = OUTPUT_DIR / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
+
+    # Every later step addresses frames by index, which needs constant frame rate.
+    input_path = ensure_cfr(input_path, temp_dir, video_cache_key(input_path), resume=resume)
 
     classified = load_scenes_cache(input_path)
     if classified is None:
@@ -177,13 +204,17 @@ def run_pipeline(
     if full_timeline:
         print("Step 3: Writing full timeline…")
         write_full_timeline(input_path, classified, processed_paths, video_only_path, fps, w, h)
+        audio_segments = [(classified[0][0], classified[-1][1])]
     else:
         print("Step 3: Concatenating processed segments…")
-        concat_videos(processed_paths, video_only_path, fps)
+        concat_videos(
+            processed_paths, video_only_path, fps, frame_counts=[e - s for s, e in processed_segments]
+        )
+        audio_segments = processed_segments
 
     if with_audio:
         print("Step 4: Muxing original audio (ffmpeg)…")
-        if mux_audio(video_only_path, input_path, output_path, full_timeline, processed_segments, fps):
+        if mux_audio(video_only_path, input_path, output_path, audio_segments, fps):
             video_only_path.unlink()
         else:
             shutil.move(str(video_only_path), str(output_path))
