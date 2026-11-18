@@ -20,16 +20,31 @@ The pipeline detects scene cuts, classifies each segment as pillarboxed (vertica
 
 ## Requirements
 
-- Python 3.10+
-- FFmpeg on `PATH` (used to mux the original audio into the output and encode it as H.264; without it the output is video-only mp4v)
+- Python 3.10–3.13 (tested on each)
+- FFmpeg on `PATH` (strongly recommended: H.264 intermediates and output, original audio muxed back in, variable-frame-rate input handled; without it the output is a silent, lower-quality mp4v file)
 - OpenCV 4.x (installed via `requirements.txt` — OpenCV 5 is not compatible with the stabilizer's dependencies, so keep the pins as-is)
 
 ## Install
 
 ```bash
-cd video_processing
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt        # or requirements-dev.txt to also get pytest
+```
+
+All dependencies are pinned to exact, tested versions. To bump one, change its pin, reinstall in a clean venv, and run `pytest`.
+
+## Tests
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+Unit and synthetic end-to-end tests run offline. To check the pipeline on real footage, build a sample recording from freely licensed Wikimedia Commons videos (real Google Meet webcam segments alternating with real vertical phone video, with audio):
+
+```bash
+.venv/bin/python tests/make_real_sample.py      # -> output/real_sample/real_sample.mp4 (+ CREDITS.txt)
+.venv/bin/python pipeline.py --input output/real_sample/real_sample.mp4 --output output/real_sample/processed.mp4 --full-timeline
 ```
 
 ## Configuration
@@ -50,7 +65,7 @@ python -m venv .venv
 # Skip stabilization (faster)
 .venv/bin/python pipeline.py --input /path/to/recording.mp4 --output /path/to/out.mp4 --skip-stabilize
 
-# Skip the audio mux step (output is video-only mp4v, no ffmpeg needed)
+# Skip the audio mux step (output is video-only)
 .venv/bin/python pipeline.py --input /path/to/recording.mp4 --output /path/to/out.mp4 --no-audio
 
 # Force full recompute (ignore cached segments and scene cache)
@@ -78,7 +93,9 @@ If you omit `--input` / `--output`, paths from `config.py` are used.
 - **Default** (no `--full-timeline`): one video containing only the processed (pillarboxed) segments, in order. Audio for those segments is trimmed from the original and kept in sync.
 - **With `--full-timeline`**: one video with the same duration as the input; full-width segments are copied from the original, pillarboxed segments are replaced by the processed versions. The full original audio track is carried over.
 
-When FFmpeg is on `PATH` (and `--no-audio` isn't set), the final file is H.264 + AAC with the original audio. Otherwise the pipeline falls back to a silent mp4v file and says so.
+When FFmpeg is on `PATH` (and `--no-audio` isn't set), the final file is H.264 + AAC with the original audio, kept in sync in both modes. Otherwise the pipeline falls back to a silent mp4v file and says so.
+
+**Variable frame rate input** (Zoom recordings often are): the pipeline addresses video by frame index, which drifts against the audio on VFR files. It detects this and first converts the input to a constant-frame-rate working copy in `output/temp/` (reused on resume).
 
 Processed segments are written under `output/` (temp crops, stabilized clips, and final blur-filled clips). The pipeline is resumable: re-run the same command to reuse existing temp files and only recompute what’s missing.
 
