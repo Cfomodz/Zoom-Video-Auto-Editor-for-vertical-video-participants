@@ -22,7 +22,7 @@ The pipeline detects scene cuts, classifies each segment as pillarboxed (vertica
 
 - Python 3.10–3.13 (tested on each)
 - FFmpeg on `PATH` (strongly recommended: H.264 intermediates and output, original audio muxed back in, variable-frame-rate input handled; without it the output is a silent, lower-quality mp4v file)
-- OpenCV 4.x (installed via `requirements.txt` — OpenCV 5 is not compatible with the stabilizer's dependencies, so keep the pins as-is)
+- OpenCV 5 (headless; installed via `requirements.txt`)
 
 ## Install
 
@@ -51,7 +51,9 @@ Unit and synthetic end-to-end tests run offline. To check the pipeline on real f
 
 1. **Paths** — In `config.py`, set `INPUT_VIDEO` to your recording (e.g. `THIS_DIR / "input.mp4"`). `OUTPUT_DIR` and `OUTPUT_VIDEO` control where results are written.
 
-2. **Tuning** — Same file: scene detection thresholds, pillarbox detection (`BLACK_THRESHOLD`, `PILLAR_EDGE_WINDOW`, etc.), blur strength, and motion-smoothing window. See comments in `config.py`.
+2. **Tuning** — Same file: scene detection thresholds, pillarbox detection (`BLACK_THRESHOLD`, `PILLAR_EDGE_WINDOW`, etc.), blur strength, motion-smoothing window (`SMOOTHING_WINDOW`) and how far stabilization may zoom in to keep its edges clean (`STABILIZE_MAX_ZOOM`). See comments in `config.py`.
+
+**Stabilization** smooths the phone camera's path (shake removed, deliberate movement kept) and zooms each segment in just enough — at most `STABILIZE_MAX_ZOOM` — that no filled-in edge pixels ever show at the sides of the video.
 
 ## Usage
 

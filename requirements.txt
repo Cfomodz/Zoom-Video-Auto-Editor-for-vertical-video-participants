@@ -2,21 +2,13 @@
 #
 # Exact pins, tested together on Python 3.10–3.13 (`pytest` passes on each).
 # Bump deliberately: change a pin, reinstall in a clean venv, re-run the tests.
-#
-# Held back on purpose (newer releases break the pipeline):
-# - OpenCV stays on 4.x: OpenCV 5.x (checked through 5.1.0) moved BRISK out of
-#   the main module, which breaks imutils (a vidstab dependency) at import time.
-# - scenedetect stays on 0.6.x: 0.7+ hard-depends on the GUI `opencv-python`
-#   wheel, which would install a second, conflicting cv2 next to this one.
-#   Use exactly one cv2 distribution — that is also why vidstab is installed
-#   without its [cv2] extra.
-opencv-contrib-python-headless==4.14.0.94
+opencv-python-headless==5.1.0.95
 # Newest numpy for each supported Python (numpy 2.5 requires Python 3.12+).
 numpy==2.5.5 ; python_version >= "3.12"
 numpy==2.4.6 ; python_version == "3.11"
 numpy==2.2.6 ; python_version < "3.11"
+# Held on 0.6.x on purpose: 0.7+ hard-depends on the GUI `opencv-python` wheel,
+# which would install a second, conflicting cv2 next to the headless one (and
+# the GUI build needs libGL, which servers often lack). Keep exactly one cv2.
 scenedetect==0.6.7.1
-vidstab==1.7.4
-# vidstab dependency, unmaintained since 2021; pinned so a resolver change can't surprise us.
-imutils==0.5.4
 tqdm==4.70.1

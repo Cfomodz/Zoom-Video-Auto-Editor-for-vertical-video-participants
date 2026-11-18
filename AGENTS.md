@@ -35,15 +35,19 @@ Everything addresses video by frame index (time = index / fps), so:
 
 ## Intermediate encoding
 
-`video_io.VideoWriter` pipes frames to ffmpeg/libx264 (near-lossless 4:4:4 for intermediates, 4:2:0 for the timeline/output) and falls back to OpenCV mp4v without ffmpeg. Repeated mp4v generations lost ~10 dB PSNR on real footage. vidstab still writes its stabilized temp file with mp4v (one generation).
+`video_io.VideoWriter` pipes frames to ffmpeg/libx264 (near-lossless 4:4:4 for intermediates, 4:2:0 for the timeline/output) and falls back to OpenCV mp4v without ffmpeg. Repeated mp4v generations lost ~10 dB PSNR on real footage.
 
 ## Real-footage sample
 
 `tests/make_real_sample.py` builds `output/real_sample/real_sample.mp4` from Wikimedia Commons clips (real Meet webcam segments + real vertical phone video, with audio), fetching only the needed seconds via ffmpeg range requests. Commons rate-limits bursts (HTTP 429 with Retry-After); the script waits it out. Never commit the result.
 
+## Stabilization
+
+`stabilize.py` (no vidstab): corner tracking + optical flow + RANSAC partial affine per frame pair, motion measured at the frame center, camera path smoothed with a centered window, kept inside a corridor so the segment zooms at most `STABILIZE_MAX_ZOOM` and no fill pixels ever show. vidstab was replaced because its border fill (`replicate`) left smeared streaks along the content edge — it looked like a bad crop — and it pinned OpenCV below 5. Measured on the real sample's three phone segments (jitter, px/frame): 1.78→1.01, 0.47→0.26, 0.34→0.10, each better than vidstab (1.17, 0.37, 0.15). Lessons from that work: estimate at full resolution (half-res noise doubled jitter on a steady clip), express motion at the frame center (not the origin), and don't reject frame pairs by inlier ratio (walking selfies legitimately split motion); only reject cut-sized jumps.
+
 ## Dependency pins (do not loosen)
 
-`requirements.txt` pins exact versions, tested on Python 3.10–3.13 (numpy has a per-Python-version pin because numpy 2.5 needs 3.12+). OpenCV must stay `<5` (re-checked against 5.1.0): OpenCV 5 removed `cv2.BRISK_create` from the main module, which breaks `imutils` (a vidstab dependency) at import time. scenedetect must stay `<0.7`: 0.7 hard-depends on the GUI `opencv-python` wheel, installing a second conflicting `cv2` next to the pinned headless one. Exactly one OpenCV distribution (`opencv-contrib-python-headless`) should be installed; `tests/test_pipeline_e2e.py` has a stabilize smoke test that catches these breakages.
+`requirements.txt` pins exact versions, tested on Python 3.10–3.13 (numpy has a per-Python-version pin because numpy 2.5 needs 3.12+). scenedetect must stay `<0.7`: 0.7 hard-depends on the GUI `opencv-python` wheel, installing a second conflicting `cv2` next to the headless one. Exactly one OpenCV distribution (`opencv-python-headless`) should be installed.
 
 ## Config paths
 

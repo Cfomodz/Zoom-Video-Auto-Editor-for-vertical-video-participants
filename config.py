@@ -27,7 +27,6 @@ BLUR_SCALE = 0.15
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1080
 
-# Motion smoothing (vidstab) on cropped segments
-SMOOTHING_WINDOW = 15
-BORDER_TYPE = "replicate"
-BORDER_SIZE = 0
+# Motion smoothing on cropped segments (stabilize.py)
+SMOOTHING_WINDOW = 15  # frames, centered; smaller = keep more intentional motion
+STABILIZE_MAX_ZOOM = 1.12  # zoom used to hide stabilized edges; bigger shakes are only partly corrected

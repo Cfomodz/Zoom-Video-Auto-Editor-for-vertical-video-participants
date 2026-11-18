@@ -1,15 +1,13 @@
 """
 End-to-end pipeline tests on small synthetic videos.
 
-Covers the regressions found in debugging:
-1. Stabilize smoke test — catches vidstab/imutils import breakage (OpenCV 5
-   removed cv2.BRISK_create) and vidstab's cv2.destroyAllWindows() call that
-   raises on headless OpenCV builds.
-2. Full pipeline runs — exit code 0 and correct output frame counts in both
+Covers the regressions found in debugging (stabilizer tests live in
+test_stabilize.py, A/V sync in test_av_sync.py):
+1. Full pipeline runs — exit code 0 and correct output frame counts in both
    concat and --full-timeline modes.
-3. Segment with no stable pillarbox bounds is relabeled full_width instead of
+2. Segment with no stable pillarbox bounds is relabeled full_width instead of
    desyncing/overflowing processed_paths in full-timeline mode.
-4. Audio mux — output carries an audio stream when the input has one.
+3. Audio mux — output carries an audio stream when the input has one.
 """
 import shutil
 import subprocess
@@ -25,7 +23,6 @@ sys.path.insert(0, str(ROOT))
 
 import pipeline  # noqa: E402
 import scene_utils  # noqa: E402
-from stabilize import stabilize_video  # noqa: E402
 
 W, H, FPS = 640, 360, 24.0
 SEG_FRAMES = 60
@@ -92,29 +89,6 @@ def isolated_output(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "OUTPUT_DIR", out_dir)
     monkeypatch.setattr(scene_utils, "OUTPUT_DIR", out_dir)
     return out_dir
-
-
-class TestStabilizeSmoke:
-    def test_vidstab_imports(self):
-        """imutils references cv2.BRISK_create at import; OpenCV must provide it."""
-        from vidstab import VidStab  # noqa: F401
-
-    def test_stabilize_headless_safe(self, tmp_path):
-        """stabilize_video must survive vidstab's cv2.destroyAllWindows() call
-        on headless OpenCV builds, and write all frames."""
-        clip = tmp_path / "shaky.mp4"
-        rng = np.random.RandomState(3)
-        base = _make_content(4, width=200)
-        out = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (200, H))
-        for _ in range(40):
-            dx, dy = int(rng.randn() * 3), int(rng.randn() * 3)
-            m = np.float32([[1, 0, dx], [0, 1, dy]])
-            out.write(cv2.warpAffine(base, m, (200, H), borderMode=cv2.BORDER_REPLICATE))
-        out.release()
-        stable = tmp_path / "stable.mp4"
-        stabilize_video(clip, stable, show_progress=False)
-        assert stable.exists()
-        assert _frame_count(stable) == 40
 
 
 class TestPipelineEndToEnd:
